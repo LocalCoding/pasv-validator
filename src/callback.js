@@ -3,7 +3,6 @@ const axios = require('axios');
 const BACKEND_URLS = {
   local: ['http://localhost:5000/validation/receive/result'],
   prod: [
-    'https://server-stage.pasv.us/validation/receive/result',
     'https://server-prod.pasv.us/validation/receive/result',
   ],
 };
