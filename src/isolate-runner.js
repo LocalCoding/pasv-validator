@@ -172,6 +172,31 @@ function expect(val) {
       return this;
     },
 
+    get empty() {
+      let isEmpty;
+      if (typeof val === 'string' || Array.isArray(val)) {
+        isEmpty = val.length === 0;
+      } else if (val instanceof Map || val instanceof Set) {
+        isEmpty = val.size === 0;
+      } else if (typeof val === 'object' && val !== null) {
+        isEmpty = Object.keys(val).length === 0;
+      } else {
+        isEmpty = !val;
+      }
+      assert(this._negated ? !isEmpty : isEmpty,
+        'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be empty');
+      return this;
+    },
+
+    // closeTo
+    closeTo(expected, delta) {
+      assert(this._negated
+        ? Math.abs(val - expected) > delta
+        : Math.abs(val - expected) <= delta,
+        'expected ' + val + (this._negated ? ' not' : '') + ' to be close to ' + expected + ' +/- ' + delta);
+      return this;
+    },
+
     // Length
     length(n) { return this.lengthOf(n); },
     lengthOf(n) {
