@@ -200,6 +200,7 @@ function expect(val) {
     includes(item) { return this.include(item); },
     contain(item) { return this.include(item); },
     contains(item) { return this.include(item); },
+    string(str) { return this.include(str); },
 
     // Above / below
     above(n) {
