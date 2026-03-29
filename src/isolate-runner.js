@@ -37,7 +37,7 @@ function it(title, fn) {
         duration: Date.now() - start,
         currentRetry: 0,
         err: e.message || String(e),
-        stack: (e.stack || '').split('\n').filter(function(l) { return l.trim().indexOf('at ') !== 0; }).join('\n')
+        stack: (e.stack || '').split(String.fromCharCode(10)).filter(function(l) { return l.trim().indexOf('at ') !== 0; }).join(String.fromCharCode(10))
       }
     });
   }
