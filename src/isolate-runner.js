@@ -90,6 +90,8 @@ function expect(val) {
     not: null,
 
     _negated: false,
+    _include: false,
+    _deep: false,
 
     // Type check
     a(type) {
@@ -212,7 +214,7 @@ function expect(val) {
       if (typeof val === 'string') {
         includes = val.includes(item);
       } else if (Array.isArray(val)) {
-        includes = val.includes(item);
+        includes = this._deep ? val.some(v => deepEqual(v, item)) : val.includes(item);
       } else if (typeof val === 'object' && val !== null) {
         includes = Object.keys(item).every(k => deepEqual(val[k], item[k]));
       } else {
@@ -309,9 +311,12 @@ function expect(val) {
     // Members
     members(list) {
       const isSuperset = list.every(m => val.some(v => deepEqual(v, m)));
-      const sameLength = val.length === list.length;
-      assert(this._negated ? !(isSuperset && sameLength) : (isSuperset && sameLength),
-        'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to have same members as ' + formatVal(list));
+      // .include.members / .contain.members — subset check;
+      // .have.members / .same.members — same members and same length
+      const isOk = this._include ? isSuperset : (isSuperset && val.length === list.length);
+      assert(this._negated ? !isOk : isOk,
+        'expected ' + formatVal(val) + (this._negated ? ' not' : '')
+          + (this._include ? ' to include members ' : ' to have same members as ') + formatVal(list));
       return this;
     },
 
@@ -350,15 +355,13 @@ function expect(val) {
         return proxy;
       }
       if (prop === 'deep') {
-        // .deep.equal -> .eql
+        target._deep = true;
+        // .deep.equal -> .eql, everything else keeps the regular chain
         return new Proxy(target, {
           get(t, p) {
             if (p === 'equal' || p === 'equals' || p === 'eq') return t.eql.bind(t);
-            if (p in t) {
-              const v = t[p];
-              return typeof v === 'function' ? v.bind(t) : proxy;
-            }
-            return proxy;
+            const v = proxy[p];
+            return v === undefined ? proxy : v;
           }
         });
       }
@@ -385,6 +388,10 @@ function expect(val) {
           const method = target[prop].bind(target);
           return new Proxy(method, {
             get(_, innerProp) {
+              // .include.members / .contain.members — subset, not full equality
+              if (prop === 'include' || prop === 'includes' || prop === 'contain' || prop === 'contains') {
+                target._include = true;
+              }
               if (innerProp in target) {
                 const v = target[innerProp];
                 return typeof v === 'function' ? v.bind(target) : v;
