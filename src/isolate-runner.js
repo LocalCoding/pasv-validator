@@ -43,29 +43,120 @@ function it(title, fn) {
   }
 }
 
-function expect(val) {
-  const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
-
-  function deepEqual(a, b) {
-    if (a === b) return true;
-    // NaN === NaN
-    if (typeof a === 'number' && typeof b === 'number' && isNaN(a) && isNaN(b)) return true;
-    if (a == null || b == null) return false;
-    if (typeof a !== typeof b) return false;
-    if (typeof a !== 'object') return false;
-    if (Array.isArray(a) !== Array.isArray(b)) return false;
-    const keysA = Object.keys(a);
-    const keysB = Object.keys(b);
-    if (keysA.length !== keysB.length) return false;
-    for (const key of keysA) {
-      if (!deepEqual(a[key], b[key])) return false;
+function __deepEqual(a, b) {
+  if (a === b) return true;
+  // NaN === NaN
+  if (typeof a === 'number' && typeof b === 'number' && isNaN(a) && isNaN(b)) return true;
+  if (a == null || b == null) return false;
+  if (typeof a !== typeof b) return false;
+  if (typeof a !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  // Arrays are compared by index, so holes match explicit undefined
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!__deepEqual(a[i], b[i])) return false;
     }
     return true;
   }
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (!__deepEqual(a[key], b[key])) return false;
+  }
+  return true;
+}
+
+globalThis.assert = {
+  fail(msg) { throw new Error(msg || 'assert.fail()'); },
+  ok(v, m) { if (!v) throw new Error(m || 'expected ' + v + ' to be truthy'); },
+  isOk(v, m) { this.ok(v, m); },
+  notOk(v, m) { if (v) throw new Error(m || 'expected ' + v + ' to be falsy'); },
+  isNotOk(v, m) { this.notOk(v, m); },
+  equal(a, b, m) { if (a != b) throw new Error(m || 'expected ' + a + ' to equal ' + b); },
+  notEqual(a, b, m) { if (a == b) throw new Error(m || 'expected ' + a + ' not to equal ' + b); },
+  strictEqual(a, b, m) { if (a !== b) throw new Error(m || 'expected ' + a + ' to strictly equal ' + b); },
+  notStrictEqual(a, b, m) { if (a === b) throw new Error(m || 'expected ' + a + ' not to strictly equal ' + b); },
+  deepEqual(a, b, m) { if (!__deepEqual(a, b)) throw new Error(m || 'expected ' + JSON.stringify(a) + ' to deeply equal ' + JSON.stringify(b)); },
+  deepStrictEqual(a, b, m) { this.deepEqual(a, b, m); },
+  notDeepEqual(a, b, m) { if (__deepEqual(a, b)) throw new Error(m || 'expected values not to be deeply equal'); },
+  isTrue(v, m) { this.strictEqual(v, true, m); },
+  isFalse(v, m) { this.strictEqual(v, false, m); },
+  isNull(v, m) { this.strictEqual(v, null, m); },
+  isNotNull(v, m) { this.notStrictEqual(v, null, m); },
+  isUndefined(v, m) { this.strictEqual(v, undefined, m); },
+  isDefined(v, m) { this.notStrictEqual(v, undefined, m); },
+  isNaN(v, m) { if (!Number.isNaN(v)) throw new Error(m || 'expected ' + v + ' to be NaN'); },
+  isArray(v, m) { if (!Array.isArray(v)) throw new Error(m || 'expected value to be an array'); },
+  isObject(v, m) { if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error(m || 'expected value to be an object'); },
+  isString(v, m) { if (typeof v !== 'string') throw new Error(m || 'expected value to be a string'); },
+  isNumber(v, m) { if (typeof v !== 'number') throw new Error(m || 'expected value to be a number'); },
+  isBoolean(v, m) { if (typeof v !== 'boolean') throw new Error(m || 'expected value to be a boolean'); },
+  isFunction(v, m) { if (typeof v !== 'function') throw new Error(m || 'expected value to be a function'); },
+  lengthOf(v, n, m) { if (!v || v.length !== n) throw new Error(m || 'expected length ' + n + ', but got ' + (v && v.length)); },
+  include(hay, needle, m) {
+    const ok = typeof hay === 'string' || Array.isArray(hay)
+      ? hay.includes(needle)
+      : !!hay && Object.keys(needle).every(k => __deepEqual(hay[k], needle[k]));
+    if (!ok) throw new Error(m || 'expected value to include ' + JSON.stringify(needle));
+  },
+  notInclude(hay, needle, m) {
+    let included = true;
+    try { this.include(hay, needle); } catch (e) { included = false; }
+    if (included) throw new Error(m || 'expected value not to include ' + JSON.stringify(needle));
+  },
+  closeTo(a, b, delta, m) { if (Math.abs(a - b) > delta) throw new Error(m || 'expected ' + a + ' to be close to ' + b + ' +/- ' + delta); },
+  isAbove(a, b, m) { if (!(a > b)) throw new Error(m || 'expected ' + a + ' to be above ' + b); },
+  isBelow(a, b, m) { if (!(a < b)) throw new Error(m || 'expected ' + a + ' to be below ' + b); },
+  isAtLeast(a, b, m) { if (!(a >= b)) throw new Error(m || 'expected ' + a + ' to be at least ' + b); },
+  isAtMost(a, b, m) { if (!(a <= b)) throw new Error(m || 'expected ' + a + ' to be at most ' + b); },
+  sameMembers(a, b, m) {
+    const same = a.length === b.length && b.every(x => a.some(y => __deepEqual(x, y)));
+    if (!same) throw new Error(m || 'expected arrays to have the same members');
+  },
+  includeMembers(a, b, m) {
+    if (!b.every(x => a.some(y => __deepEqual(x, y)))) throw new Error(m || 'expected array to include members');
+  },
+  throws(fn, m) { let threw = false; try { fn(); } catch (e) { threw = true; } if (!threw) throw new Error(m || 'expected function to throw'); },
+  Throw(fn, m) { this.throws(fn, m); },
+  doesNotThrow(fn, m) { try { fn(); } catch (e) { throw new Error(m || 'expected function not to throw'); } },
+};
+
+// Minimal process stub — some tests measure execution time
+globalThis.process = {
+  env: {},
+  argv: [],
+  platform: 'isolate',
+  version: 'v18.0.0',
+  hrtime: Object.assign(function(prev) {
+    const ms = Date.now();
+    const sec = Math.floor(ms / 1000);
+    const ns = (ms % 1000) * 1e6;
+    if (!prev) return [sec, ns];
+    let ds = sec - prev[0];
+    let dn = ns - prev[1];
+    if (dn < 0) { ds -= 1; dn += 1e9; }
+    return [ds, dn];
+  }, { bigint: () => BigInt(Date.now()) * BigInt(1e6) }),
+  memoryUsage: () => ({ rss: 0, heapTotal: 0, heapUsed: 0, external: 0, arrayBuffers: 0 }),
+  nextTick: (fn, ...args) => fn(...args),
+};
+
+function expect(val) {
+  const assert = (cond, msg) => { if (!cond) throw new Error(msg); };
+
+  const deepEqual = __deepEqual;
 
   function formatVal(v) {
     if (v === undefined) return 'undefined';
     if (v !== v) return 'NaN';
+    // JSON.stringify turns undefined/NaN inside arrays into null — show them as they are
+    if (Array.isArray(v)) {
+      const parts = [];
+      for (let i = 0; i < v.length; i++) parts.push(formatVal(v[i]));
+      return '[' + parts.join(',') + ']';
+    }
     try { return JSON.stringify(v); } catch { return String(v); }
   }
 
@@ -104,7 +195,7 @@ function expect(val) {
         assert(this._negated ? actual !== type : actual === type,
           'expected ' + formatVal(val) + ' to be ' + (this._negated ? 'not ' : '') + 'a ' + type + ', but got ' + actual);
       }
-      return this;
+      return proxy;
     },
 
     an(type) {
@@ -116,7 +207,7 @@ function expect(val) {
     eq(expected) {
       assert(this._negated ? val !== expected : val === expected,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to equal ' + formatVal(expected));
-      return this;
+      return proxy;
     },
     equal(expected) { return this.eq(expected); },
     equals(expected) { return this.eq(expected); },
@@ -126,7 +217,7 @@ function expect(val) {
       const isEqual = deepEqual(val, expected);
       assert(this._negated ? !isEqual : isEqual,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to deeply equal ' + formatVal(expected));
-      return this;
+      return proxy;
     },
     deep: null,
 
@@ -134,44 +225,44 @@ function expect(val) {
     get ok() {
       assert(this._negated ? !val : !!val,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be truthy');
-      return this;
+      return proxy;
     },
 
     get true() {
       assert(this._negated ? val !== true : val === true,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be true');
-      return this;
+      return proxy;
     },
 
     get false() {
       assert(this._negated ? val !== false : val === false,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be false');
-      return this;
+      return proxy;
     },
 
     get null() {
       assert(this._negated ? val !== null : val === null,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be null');
-      return this;
+      return proxy;
     },
 
     get undefined() {
       assert(this._negated ? val !== undefined : val === undefined,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be undefined');
-      return this;
+      return proxy;
     },
 
     get NaN() {
       const isNan = Number.isNaN(val);
       assert(this._negated ? !isNan : isNan,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be NaN');
-      return this;
+      return proxy;
     },
 
     get exist() {
       assert(this._negated ? (val === null || val === undefined) : (val !== null && val !== undefined),
         'expected ' + formatVal(val) + (this._negated ? '' : ' not') + ' to be null or undefined');
-      return this;
+      return proxy;
     },
 
     get empty() {
@@ -187,7 +278,7 @@ function expect(val) {
       }
       assert(this._negated ? !isEmpty : isEmpty,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be empty');
-      return this;
+      return proxy;
     },
 
     // closeTo
@@ -196,7 +287,7 @@ function expect(val) {
         ? Math.abs(val - expected) > delta
         : Math.abs(val - expected) <= delta,
         'expected ' + val + (this._negated ? ' not' : '') + ' to be close to ' + expected + ' +/- ' + delta);
-      return this;
+      return proxy;
     },
 
     // Length
@@ -205,7 +296,7 @@ function expect(val) {
       const len = val.length;
       assert(this._negated ? len !== n : len === n,
         'expected ' + formatVal(val) + ' to have length ' + (this._negated ? 'not ' : '') + n + ', but got ' + len);
-      return this;
+      return proxy;
     },
 
     // Include
@@ -222,7 +313,7 @@ function expect(val) {
       }
       assert(this._negated ? !includes : includes,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to include ' + formatVal(item));
-      return this;
+      return proxy;
     },
     includes(item) { return this.include(item); },
     contain(item) { return this.include(item); },
@@ -233,7 +324,7 @@ function expect(val) {
     above(n) {
       assert(this._negated ? val <= n : val > n,
         'expected ' + val + (this._negated ? ' not' : '') + ' to be above ' + n);
-      return this;
+      return proxy;
     },
     gt(n) { return this.above(n); },
     greaterThan(n) { return this.above(n); },
@@ -241,7 +332,7 @@ function expect(val) {
     below(n) {
       assert(this._negated ? val >= n : val < n,
         'expected ' + val + (this._negated ? ' not' : '') + ' to be below ' + n);
-      return this;
+      return proxy;
     },
     lt(n) { return this.below(n); },
     lessThan(n) { return this.below(n); },
@@ -249,14 +340,14 @@ function expect(val) {
     least(n) {
       assert(this._negated ? val < n : val >= n,
         'expected ' + val + (this._negated ? ' not' : '') + ' to be at least ' + n);
-      return this;
+      return proxy;
     },
     gte(n) { return this.least(n); },
 
     most(n) {
       assert(this._negated ? val > n : val <= n,
         'expected ' + val + (this._negated ? ' not' : '') + ' to be at most ' + n);
-      return this;
+      return proxy;
     },
     lte(n) { return this.most(n); },
 
@@ -273,7 +364,7 @@ function expect(val) {
       if (!this._negated && hasProp) {
         return expect(val[name]);
       }
-      return this;
+      return proxy;
     },
 
     // Satisfy
@@ -281,7 +372,7 @@ function expect(val) {
       const result = fn(val);
       assert(this._negated ? !result : result,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to satisfy the given function');
-      return this;
+      return proxy;
     },
     satisfies(fn) { return this.satisfy(fn); },
 
@@ -289,7 +380,7 @@ function expect(val) {
     match(re) {
       assert(this._negated ? !re.test(val) : re.test(val),
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to match ' + re);
-      return this;
+      return proxy;
     },
 
     // Throw
@@ -304,7 +395,7 @@ function expect(val) {
         assert(this._negated ? !threw : threw,
           'expected function to' + (this._negated ? ' not' : '') + ' throw');
       }
-      return this;
+      return proxy;
     },
     throws(errType) { return this.throw(errType); },
 
@@ -317,7 +408,7 @@ function expect(val) {
       assert(this._negated ? !isOk : isOk,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '')
           + (this._include ? ' to include members ' : ' to have same members as ') + formatVal(list));
-      return this;
+      return proxy;
     },
 
     // Keys
@@ -327,22 +418,25 @@ function expect(val) {
       const hasAll = expectedKeys.every(k => actualKeys.includes(k));
       assert(this._negated ? !hasAll : hasAll,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to have keys ' + formatVal(expectedKeys));
-      return this;
+      return proxy;
     },
 
     // oneOf
     oneOf(list) {
-      const found = list.some(item => deepEqual(val, item));
+      // .contain.oneOf / .include.oneOf — target contains one of the items
+      const found = this._include && (typeof val === 'string' || Array.isArray(val))
+        ? list.some(item => val.includes(item))
+        : list.some(item => deepEqual(val, item));
       assert(this._negated ? !found : found,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be one of ' + formatVal(list));
-      return this;
+      return proxy;
     },
 
     // instanceof
     instanceof(constructor) {
       assert(this._negated ? !(val instanceof constructor) : val instanceof constructor,
         'expected ' + formatVal(val) + (this._negated ? ' not' : '') + ' to be an instance of ' + (constructor.name || constructor));
-      return this;
+      return proxy;
     },
     instanceOf(constructor) { return this.instanceof(constructor); },
   };
