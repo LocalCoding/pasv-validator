@@ -6,6 +6,7 @@
 const path = require('path');
 const { runInIsolate } = require('../src/isolate-runner');
 const { validateEqual } = require('../src/equal-validator');
+const { testChaiCompat } = require('./chai-compat');
 
 const fixturesDir = path.join(__dirname, '../../pasv-validator-dockerized/test-data');
 
@@ -118,15 +119,18 @@ async function main() {
   console.log('PASV Validator — Test Suite');
   console.log('==========================');
 
+  const chaiResult = await testChaiCompat();
   const equalResult = await testEqual();
   const unitResult = await testUnit();
 
   console.log('\n==========================');
   console.log('Summary:');
+  console.log(`  Chai:  ${chaiResult.passed}/${chaiResult.total} passed`);
   console.log(`  Equal: ${equalResult.passed}/${equalResult.total} passed`);
   console.log(`  Unit:  ${unitResult.passed}/${unitResult.total} passed, ${unitResult.errors} errors`);
 
-  const allPassed = unitResult.failed === 0 && unitResult.errors === 0 && equalResult.failed === 0;
+  const allPassed = unitResult.failed === 0 && unitResult.errors === 0
+    && equalResult.failed === 0 && chaiResult.failed === 0;
   process.exit(allPassed ? 0 : 1);
 }
 
