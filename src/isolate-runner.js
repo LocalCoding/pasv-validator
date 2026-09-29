@@ -8,9 +8,13 @@ const TIMEOUT_MS = 10000;
  * Provides: describe(), it(), expect() with Chai-compatible API.
  */
 const TEST_FRAMEWORK = `
+(function () {
+// Everything here is private to this closure: the solution runs in the same context afterwards
+// and must not be able to reach the results or replace the framework (see lockdown below).
 const __results = [];
 const __errors = [];
 let __currentSuite = '';
+let __began = false;
 
 function describe(title, fn) {
   const prev = __currentSuite;
@@ -506,6 +510,58 @@ function expect(val) {
 
   return proxy;
 }
+
+// --- Lockdown -------------------------------------------------------------------------------
+// The solution runs after this point in the same context. Make the framework and the built-ins it
+// relies on impossible to replace, so a solution cannot fake passing tests (e.g. by redefining
+// \`it\`/\`expect\` or patching Array.prototype.every). Existing properties become read-only;
+// adding new ones (Array.prototype.myMap exercises) still works. Object.prototype, Function.prototype
+// (except call/apply/bind) and Error.prototype are left alone: locking them breaks ordinary code
+// such as \`Child.prototype.constructor = Child\` or \`this.name = ...\` in custom errors.
+const G = globalThis;
+function lockProps(obj, names) {
+  if (!obj) return;
+  for (const key of names || Reflect.ownKeys(obj)) {
+    const d = Object.getOwnPropertyDescriptor(obj, key);
+    if (!d || !d.configurable) continue;
+    if ('value' in d) d.writable = false;
+    d.configurable = false;
+    Object.defineProperty(obj, key, d);
+  }
+}
+const INTRINSICS = ['Object', 'Array', 'String', 'Number', 'Boolean', 'JSON', 'Math', 'Reflect', 'Proxy',
+  'Date', 'Symbol', 'Map', 'Set', 'WeakMap', 'WeakSet', 'RegExp', 'Error', 'TypeError', 'RangeError',
+  'SyntaxError', 'ReferenceError', 'Promise', 'BigInt', 'isNaN', 'isFinite', 'parseInt', 'parseFloat', 'globalThis'];
+for (const name of ['Object', 'Array', 'String', 'Number', 'JSON', 'Math', 'Reflect', 'Date', 'Symbol']) lockProps(G[name]);
+for (const name of ['Array', 'String', 'Number', 'Boolean', 'Symbol', 'RegExp', 'Map', 'Set', 'Date']) lockProps(G[name].prototype);
+lockProps(Function.prototype, ['call', 'apply', 'bind']);
+
+function lockGlobal(name, value) {
+  Object.defineProperty(G, name, { value, writable: false, configurable: false, enumerable: false });
+}
+Object.freeze(G.assert);
+lockGlobal('assert', G.assert);
+lockGlobal('describe', describe);
+lockGlobal('it', it);
+lockGlobal('expect', expect);
+// Called by the host between the solution and the tests: results registered before it (e.g. by the
+// solution calling it()) are discarded. If the solution already called it, the host sees false.
+lockGlobal('__pasv_begin', function () {
+  if (__began) return false;
+  __began = true;
+  __results.length = 0;
+  __errors.length = 0;
+  return true;
+});
+// Returned to the host by structured copy (no JSON.stringify/toJSON inside the isolate).
+lockGlobal('__pasv_collect', function () {
+  return { began: __began, results: __results, errors: __errors };
+});
+for (const name of INTRINSICS) {
+  const d = Object.getOwnPropertyDescriptor(G, name);
+  if (d && d.configurable) lockGlobal(name, G[name]);
+}
+})();
 `;
 
 /**
@@ -518,6 +574,18 @@ function expect(val) {
  * @param {number} options.timeoutMs - Execution timeout (default: 10000)
  * @returns {object} { results, totalTests, passedTests, isPassed, error?, duration }
  */
+function tampered(start) {
+  const message = 'The solution interfered with the test framework';
+  return {
+    results: [{ terminal: encodeURI(message) }],
+    totalTests: 0,
+    passedTests: 0,
+    isPassed: false,
+    error: message,
+    duration: Date.now() - start,
+  };
+}
+
 async function runInIsolate(solution, test, options = {}) {
   const memoryMB = options.memoryMB || MEMORY_LIMIT_MB;
   const timeoutMs = options.timeoutMs || TIMEOUT_MS;
@@ -553,6 +621,12 @@ async function runInIsolate(solution, test, options = {}) {
       };
     }
 
+    // Only results registered from here on count; false means the solution already called it
+    const beginScript = await isolate.compileScript('__pasv_begin()');
+    if ((await beginScript.run(context, { timeout: 1000 })) !== true) {
+      return tampered(start);
+    }
+
     // Run tests
     try {
       const testScript = await isolate.compileScript(test);
@@ -569,10 +643,12 @@ async function runInIsolate(solution, test, options = {}) {
       };
     }
 
-    // Collect results
-    const collectScript = await isolate.compileScript('JSON.stringify({ results: __results, errors: __errors })');
-    const resultJson = await collectScript.run(context, { timeout: 1000 });
-    const { results, errors } = JSON.parse(resultJson);
+    // Collect results (structured copy: nothing inside the isolate can rewrite them on the way out)
+    const collectScript = await isolate.compileScript('__pasv_collect()');
+    const { began, results } = await collectScript.run(context, { timeout: 1000, copy: true });
+    if (!began || !Array.isArray(results)) {
+      return tampered(start);
+    }
 
     const duration = Date.now() - start;
     const totalTests = results.length;
